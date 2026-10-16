@@ -1,0 +1,11 @@
+import {Router} from 'express';
+import rateLimit from 'express-rate-limit';
+import {login,logout,me} from '../controllers/authController.js';
+import requireAdmin from '../middleware/requireAdmin.js';
+import {asyncHandler} from '../utils/asyncHandler.js';
+const router=Router();
+const loginLimiter=rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:'draft-7',legacyHeaders:false,message:{message:'Too many login attempts. Please try again later.'}});
+router.post('/login',loginLimiter,asyncHandler(login));
+router.get('/me',requireAdmin,me);
+router.post('/logout',requireAdmin,logout);
+export default router;

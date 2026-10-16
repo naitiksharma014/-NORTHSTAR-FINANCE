@@ -1,0 +1,13 @@
+import {Router} from 'express';
+import FAQ from '../models/FAQ.js';
+import requireAdmin from '../middleware/requireAdmin.js';
+import optionalAdmin from '../middleware/optionalAdmin.js';
+import {createResourceController} from '../controllers/resourceController.js';
+import {asyncHandler} from '../utils/asyncHandler.js';
+const router=Router();
+const controller=createResourceController(FAQ);
+router.get('/',optionalAdmin,asyncHandler(controller.list));
+router.post('/',requireAdmin,asyncHandler(controller.create));
+router.put('/:id',requireAdmin,asyncHandler(controller.update));
+router.delete('/:id',requireAdmin,asyncHandler(controller.remove));
+export default router;

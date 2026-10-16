@@ -1,0 +1,14 @@
+import {Router} from 'express';
+import rateLimit from 'express-rate-limit';
+import {createMessage,listMessages,updateMessage,replyToMessage,deleteMessage,testEmail} from '../controllers/messageController.js';
+import requireAdmin from '../middleware/requireAdmin.js';
+import {asyncHandler} from '../utils/asyncHandler.js';
+const router=Router();
+const contactLimiter=rateLimit({windowMs:15*60*1000,limit:8,standardHeaders:'draft-7',legacyHeaders:false,message:{message:'Too many enquiries were submitted from this connection. Please try again later.'}});
+router.post('/',contactLimiter,asyncHandler(createMessage));
+router.get('/',requireAdmin,asyncHandler(listMessages));
+router.post('/test-email',requireAdmin,asyncHandler(testEmail));
+router.patch('/:id',requireAdmin,asyncHandler(updateMessage));
+router.post('/:id/reply',requireAdmin,asyncHandler(replyToMessage));
+router.delete('/:id',requireAdmin,asyncHandler(deleteMessage));
+export default router;
