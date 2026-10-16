@@ -20,7 +20,16 @@ import {notFound,errorHandler} from './middleware/errorHandler.js';
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 // Resolve the environment file relative to this server file, not the terminal's current directory.
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
-const app=express();const port=Number(process.env.PORT||5000);
+
+
+const app = express();
+
+// Render runs behind a proxy. Configure this before rate-limit middleware.
+app.set('trust proxy', 1);
+
+const port = Number(process.env.PORT || 5000);
+
+
 const awaitlessMongooseState = () => mongoose.connection.readyState;
 const allowedOrigins=(process.env.CLIENT_URL||'http://localhost:5173').split(',').map((origin)=>origin.trim());
 app.disable('x-powered-by');
