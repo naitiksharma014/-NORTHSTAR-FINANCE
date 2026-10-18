@@ -16,6 +16,7 @@ import testimonialsRoutes from './routes/testimonialsRoutes.js';
 import faqsRoutes from './routes/faqsRoutes.js';
 import messageRoutes from './routes/messageRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import Upload from './models/Upload.js';
 import {notFound,errorHandler} from './middleware/errorHandler.js';
 const __dirname=path.dirname(fileURLToPath(import.meta.url));
 // Resolve the environment file relative to this server file, not the terminal's current directory.
@@ -48,6 +49,16 @@ app.use(helmet({
 }));
 app.use(cors({origin:(origin,cb)=>{if(!origin||allowedOrigins.includes(origin))return cb(null,true);return cb(new Error('Origin is not allowed by CORS.'));},credentials:true}));
 app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:true,limit:'1mb'}));app.use(cookieParser());if(process.env.NODE_ENV!=='production')app.use(morgan('dev'));
+app.use('/api',(_req,res,next)=>{res.set({'Cache-Control':'no-store, no-cache, must-revalidate, proxy-revalidate',Pragma:'no-cache',Expires:'0','Surrogate-Control':'no-store'});next();});
+app.set('etag',false);
+app.get('/uploads/:name',async(req,res,next)=>{
+  try{
+    const doc=await Upload.findOne({name:req.params.name});
+    if(!doc)return next(); // fall through to legacy files on disk (local development)
+    res.set({'Content-Type':doc.mimeType,'Content-Length':String(doc.data.length),'Cache-Control':'public, max-age=31536000, immutable','Cross-Origin-Resource-Policy':'cross-origin'});
+    res.end(doc.data);
+  }catch(error){next(error)}
+});
 app.use('/uploads',express.static(path.resolve(__dirname,'../uploads'),{maxAge:'7d',immutable:true}));
 app.get('/api/health',(_req,res)=>res.json({status:'ok',service:'globalfpo-mern-api',timestamp:new Date().toISOString()}));
 app.get('/api/health/ready',(_req,res)=>{
