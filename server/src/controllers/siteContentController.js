@@ -2,8 +2,35 @@
 import SiteContent from '../models/SiteContent.js';
 import { defaultSiteContent } from '../config/defaultData.js';
 
+const OLD_NAME = /Rohan\s*&\s*Company/gi;
+
+function replaceOldName(value) {
+  if (typeof value === 'string') {
+    return value.replace(OLD_NAME, (match) =>
+      match === match.toUpperCase()
+        ? 'NORTHSTAR FINANCE'
+        : 'Northstar Finance'
+    );
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(replaceOldName);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        replaceOldName(item),
+      ])
+    );
+  }
+
+  return value;
+}
+
 function disableCache(res) {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
 }
@@ -11,9 +38,20 @@ function disableCache(res) {
 export async function getSiteContent(req, res) {
   disableCache(res);
 
-  const record = await SiteContent.findOne({ key: 'main' }).lean();
+  let record = await SiteContent.findOne({ key: 'main' });
 
-  return res.json(record?.content ?? defaultSiteContent);
+  if (!record) {
+    return res.json(replaceOldName(defaultSiteContent));
+  }
+
+  const corrected = replaceOldName(record.content);
+
+  if (JSON.stringify(corrected) !== JSON.stringify(record.content)) {
+    record.content = corrected;
+    await record.save();
+  }
+
+  return res.json(corrected);
 }
 
 export async function updateSiteContent(req, res) {
@@ -30,13 +68,11 @@ export async function updateSiteContent(req, res) {
   }
 
   try {
+    const content = replaceOldName(req.body);
+
     const record = await SiteContent.findOneAndUpdate(
       { key: 'main' },
-      {
-        $set: {
-          content: req.body,
-        },
-      },
+      { $set: { content } },
       {
         new: true,
         upsert: true,
@@ -45,7 +81,7 @@ export async function updateSiteContent(req, res) {
       }
     );
 
-    return res.status(200).json({
+    return res.json({
       message: 'Website content saved successfully.',
       content: record.content,
     });
