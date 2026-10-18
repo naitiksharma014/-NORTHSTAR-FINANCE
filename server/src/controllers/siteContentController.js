@@ -2,56 +2,55 @@
 import SiteContent from '../models/SiteContent.js';
 import { defaultSiteContent } from '../config/defaultData.js';
 
-const OLD_NAME = /Rohan\s*&\s*Company/gi;
-
-function replaceOldName(value) {
-  if (typeof value === 'string') {
-    return value.replace(OLD_NAME, (match) =>
-      match === match.toUpperCase()
-        ? 'NORTHSTAR FINANCE'
-        : 'Northstar Finance'
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(replaceOldName);
-  }
-
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [
-        key,
-        replaceOldName(item),
-      ])
-    );
-  }
-
-  return value;
-}
-
 function disableCache(res) {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
+}
+
+// Keep the newest record and remove duplicate "main" records.
+async function getCanonicalRecord() {
+  const records = await SiteContent.find({ key: 'main' })
+    .sort({ updatedAt: -1, _id: -1 });
+
+  if (records.length === 0) {
+    return null;
+  }
+
+  const canonical = records[0];
+  const duplicateIds = records.slice(1).map((record) => record._id);
+
+  if (duplicateIds.length > 0) {
+    await SiteContent.deleteMany({
+      _id: { $in: duplicateIds },
+    });
+
+    console.warn(
+      `Removed ${duplicateIds.length} duplicate site-content record(s).`
+    );
+  }
+
+  // Enforce uniqueness once existing duplicates have been removed.
+  try {
+    await SiteContent.collection.createIndex(
+      { key: 1 },
+      { unique: true, name: 'unique_site_content_key' }
+    );
+  } catch (error) {
+    console.error('Could not ensure unique site-content index:', error.message);
+  }
+
+  return canonical;
 }
 
 export async function getSiteContent(req, res) {
   disableCache(res);
 
-  let record = await SiteContent.findOne({ key: 'main' });
+  const record = await getCanonicalRecord();
 
-  if (!record) {
-    return res.json(replaceOldName(defaultSiteContent));
-  }
-
-  const corrected = replaceOldName(record.content);
-
-  if (JSON.stringify(corrected) !== JSON.stringify(record.content)) {
-    record.content = corrected;
-    await record.save();
-  }
-
-  return res.json(corrected);
+  return res.status(200).json(
+    record?.content ?? defaultSiteContent
+  );
 }
 
 export async function updateSiteContent(req, res) {
@@ -68,25 +67,25 @@ export async function updateSiteContent(req, res) {
   }
 
   try {
-    const content = replaceOldName(req.body);
+    let record = await getCanonicalRecord();
 
-    const record = await SiteContent.findOneAndUpdate(
-      { key: 'main' },
-      { $set: { content } },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
-        setDefaultsOnInsert: true,
-      }
-    );
+    if (record) {
+      record.content = req.body;
+      await record.save();
+    } else {
+      record = await SiteContent.create({
+        key: 'main',
+        content: req.body,
+      });
+    }
 
-    return res.json({
+    // Return the actual saved document, not the submitted request body.
+    return res.status(200).json({
       message: 'Website content saved successfully.',
       content: record.content,
     });
   } catch (error) {
-    console.error('Failed to save website content:', error);
+    console.error('Failed to update site content:', error);
 
     return res.status(500).json({
       message: 'Failed to save website content.',
